@@ -373,6 +373,19 @@ body {
     <div style="display:flex;gap:8px;align-items:center">
       <input id="gs-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;outline:none;background:#F5F3EE;color:var(--text);min-width:0">
       <button onclick="loadSheet()" style="padding:9px 16px;background:#1A1A1A;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0">載入</button>
+      <button onclick="reloadSheet()" title="重新載入最新資料" style="padding:9px 12px;background:#34A853;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">🔄</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="font-size:11px;font-weight:700;color:var(--sub);white-space:nowrap">自動更新</span>
+      <select id="gs-interval" onchange="setAutoRefresh()" style="padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:#F5F3EE;color:var(--text);outline:none;-webkit-appearance:none">
+        <option value="0">關閉</option>
+        <option value="1">每 1 分鐘</option>
+        <option value="3">每 3 分鐘</option>
+        <option value="5" selected>每 5 分鐘</option>
+        <option value="10">每 10 分鐘</option>
+        <option value="30">每 30 分鐘</option>
+      </select>
+      <span id="gs-countdown" style="font-size:11px;color:#34A853;font-weight:700;display:none"></span>
     </div>
     <div id="gs-status" style="font-size:11px;margin-top:7px;min-height:16px;color:var(--sub)"></div>
     <div style="font-size:10px;color:#aaa;margin-top:8px;line-height:1.6">
@@ -541,18 +554,9 @@ var visibleCh  = {};
 CH_ORDER.forEach(function(k){ visibleCh[k] = true; });
 
 var promos = [
-  { id:1,  name:'春節福箱特賣',     ch:'CVS',      item:'啤酒', start:'2026-01-20', end:'2026-02-05', note:'配合農曆春節' },
-  { id:2,  name:'釀酒季聯合推廣',   ch:'CVS',      item:'烈酒', start:'2026-03-01', end:'2026-03-31', note:'CVS全通路上架' },
-  { id:3,  name:'全聯清明酒禮',     ch:'全聯',     item:'烈酒', start:'2026-03-25', end:'2026-04-10', note:'' },
-  { id:4,  name:'全聯母親節禮盒',   ch:'全聯',     item:'其他', start:'2026-04-15', end:'2026-05-15', note:'' },
-  { id:5,  name:'超市春季啤酒促',   ch:'連鎖超市', item:'啤酒', start:'2026-03-01', end:'2026-03-31', note:'全家福/頂好' },
-  { id:6,  name:'超市泡麵聯促',     ch:'連鎖超市', item:'泡麵', start:'2026-04-01', end:'2026-04-30', note:'' },
-  { id:7,  name:'量販春節特賣',     ch:'量販',     item:'啤酒', start:'2026-01-15', end:'2026-02-10', note:'大潤發/家樂福' },
-  { id:8,  name:'量販母親節禮盒',   ch:'量販',     item:'烈酒', start:'2026-04-20', end:'2026-05-12', note:'' },
-  { id:9,  name:'傳統菸品補貨推進', ch:'傳統',     item:'菸',   start:'2026-02-15', end:'2026-03-20', note:'重點通路補貨' },
-  { id:10, name:'傳統生技保健促案', ch:'傳統',     item:'生技', start:'2026-04-01', end:'2026-04-30', note:'' },
-  { id:11, name:'業務員啤酒教育',   ch:'教育訓練', item:'啤酒', start:'2026-03-10', end:'2026-03-12', note:'北中南三場' },
-  { id:12, name:'菸品法規培訓',     ch:'教育訓練', item:'菸',   start:'2026-04-08', end:'2026-04-09', note:'' },
+  { id:1, name:'春節特賣', ch:'CVS', item:'啤酒', start:'2026-04-17', end:'2026-04-30', note:'啤酒' },
+  { id:2, name:'秋節特賣', ch:'CVS', item:'烈酒', start:'2026-04-17', end:'2026-05-30', note:'啤酒' },
+  { id:3, name:'冬節特賣', ch:'CVS', item:'生技', start:'2026-04-30', end:'2026-06-01', note:'生技' },
 ];
 var nextId = 13;
 var curView = 'gantt';
@@ -1092,15 +1096,25 @@ function toggleGsPanel(){
   p.style.padding   = gsPanelOpen ? '0 16px' : '0 16px';
 }
 
+var GAS_API = 'https://script.google.com/macros/s/AKfycbzcpdddacKQLLOMbuYwAlFhjtAiQ_EeZmbgAUEbTAsir96tnhqq-gp1BFnU8hZau2g/exec';
+
 function sheetUrlToCsvUrl(url){
-  // 支援 /edit、/pub、純 spreadsheets/d/ID 格式
   var m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   if(!m) return null;
   var id = m[1];
-  // 取 gid（工作表編號），預設 0
   var gidM = url.match(/[#&?]gid=(\d+)/);
   var gid  = gidM ? gidM[1] : '0';
   return 'https://docs.google.com/spreadsheets/d/'+id+'/export?format=csv&gid='+gid;
+}
+
+function sheetUrlToJsonUrl(url){
+  var m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if(!m) return null;
+  var id = m[1];
+  var gidM = url.match(/[#&?]gid=(\d+)/);
+  var gid  = gidM ? gidM[1] : '0';
+  // Google Sheets JSON API (不需要登入，公開試算表可用)
+  return 'https://docs.google.com/spreadsheets/d/'+id+'/gviz/tq?tqx=out:csv&gid='+gid;
 }
 
 function setGsStatus(msg, color){
@@ -1115,38 +1129,64 @@ async function loadSheet(){
   var csvUrl = sheetUrlToCsvUrl(url);
   if(!csvUrl){ setGsStatus('網址格式不正確，請確認為 Google Sheet 連結', '#E53935'); return; }
   setGsStatus('⏳ 讀取中...', '#888');
-  try {
-    // 使用 CORS proxy 繞過跨域限制
-    var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(csvUrl);
-    var res = await fetch(proxyUrl);
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    var text = await res.text();
-    var rows = parseCsv(text);
-    if(rows.length < 2){ setGsStatus('試算表沒有資料（至少需要標題列＋一筆資料）', '#E53935'); return; }
-    // 跳過第一列標題
-    var imported = [], skipped = 0;
-    for(var i=1; i<rows.length; i++){
-      var r = rows[i];
-      var name  = (r[0]||'').trim();
-      var ch    = (r[1]||'').trim();
-      var item  = (r[2]||'').trim();
-      var start = (r[3]||'').trim();
-      var end   = (r[4]||'').trim();
-      var note  = (r[5]||'').trim();
-      if(!name || !start || !end){ skipped++; continue; }
-      if(!CH_META[ch])   ch   = 'CVS';
-      if(!ITEM_META[item]) item = '其他';
-      imported.push({ id: nextId++, name:name, ch:ch, item:item, start:start, end:end, note:note });
-    }
-    if(!imported.length){ setGsStatus('沒有有效資料，請確認欄位格式', '#E53935'); return; }
-    promos = imported;
-    document.getElementById('gs-dot').style.display = 'block';
-    setGsStatus('✅ 成功匯入 '+imported.length+' 筆'+(skipped?' ('+skipped+' 筆略過)':''), '#34A853');
-    buildLegend(); renderAll();
-  } catch(e){
-    setGsStatus('❌ 無法讀取：請確認試算表已設為「任何人可檢視」', '#E53935');
-    console.error(e);
+
+  // 依序嘗試多個 proxy
+  var proxies = [
+    'https://corsproxy.io/?' + encodeURIComponent(csvUrl),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(csvUrl),
+    'https://cors-anywhere.herokuapp.com/' + csvUrl,
+  ];
+
+  var text = null;
+  for(var pi=0; pi<proxies.length; pi++){
+    try {
+      var res = await fetch(proxies[pi], {cache:'no-store'});
+      if(res.ok){
+        text = await res.text();
+        if(text && text.length > 5) break;
+      }
+    } catch(e){ /* 繼續試下一個 */ }
   }
+
+  if(!text || text.length < 5){
+    setGsStatus('❌ 無法讀取，請確認：1) 試算表已設為公開  2) 網址正確', '#E53935');
+    return;
+  }
+
+  var rows = parseCsv(text);
+  if(rows.length < 2){ setGsStatus('試算表沒有資料（至少需要標題列＋一筆資料）', '#E53935'); return; }
+
+  var imported = [], skipped = 0;
+  for(var i=1; i<rows.length; i++){
+    var r = rows[i];
+    var name  = (r[0]||'').trim();
+    var ch    = (r[1]||'').trim();
+    var item  = (r[2]||'').trim();
+    var start = normalizeDate(r[3]||'');
+    var end   = normalizeDate(r[4]||'');
+    var note  = (r[5]||'').trim();
+    if(!name || !start || !end){ skipped++; continue; }
+    if(!CH_META[ch])     ch   = 'CVS';
+    if(!ITEM_META[item]) item = '其他';
+    imported.push({ id: nextId++, name:name, ch:ch, item:item, start:start, end:end, note:note });
+  }
+  if(!imported.length){ setGsStatus('沒有有效資料，請確認欄位格式', '#E53935'); return; }
+  promos = imported;
+  // 儲存網址供自動更新
+  window._gsUrl = url;
+  document.getElementById('gs-dot').style.display = 'block';
+  setGsStatus('✅ 成功匯入 '+imported.length+' 筆'+(skipped?' ('+skipped+' 筆略過)':'') + '　　點「🔄 更新」可重新載入', '#34A853');
+  buildLegend(); renderAll();
+}
+
+// 日期格式容錯：支援 2026/04/01 或 2026-04-01
+function normalizeDate(s){
+  s = s.trim().replace(/\//g, '-');
+  if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)){
+    var p=s.split('-');
+    return p[0]+'-'+String(+p[1]).padStart(2,'0')+'-'+String(+p[2]).padStart(2,'0');
+  }
+  return '';
 }
 
 function parseCsv(text){
@@ -1172,9 +1212,59 @@ function parseCsv(text){
   return rows;
 }
 
+function reloadSheet(){
+  if(!window._gsUrl){ setGsStatus('請先載入一次試算表', '#E53935'); return; }
+  document.getElementById('gs-url').value = window._gsUrl;
+  loadSheet();
+}
+
+/* ── 自動更新 ── */
+var _autoTimer   = null;
+var _countTimer  = null;
+var _nextRefresh = 0;
+
+function setAutoRefresh(){
+  // 清掉舊計時器
+  if(_autoTimer)  { clearInterval(_autoTimer);  _autoTimer  = null; }
+  if(_countTimer) { clearInterval(_countTimer); _countTimer = null; }
+  var cd = document.getElementById('gs-countdown');
+  cd.style.display = 'none';
+
+  var mins = parseInt(document.getElementById('gs-interval').value, 10);
+  if(!mins || !window._gsUrl) return;
+
+  var ms = mins * 60 * 1000;
+  _nextRefresh = Date.now() + ms;
+
+  // 倒數顯示
+  cd.style.display = 'inline';
+  function tick(){
+    var left = Math.max(0, Math.round((_nextRefresh - Date.now()) / 1000));
+    var m = Math.floor(left/60), s = left%60;
+    cd.textContent = '下次更新 ' + (m>0 ? m+'m ':'')+String(s).padStart(2,'0')+'s';
+  }
+  tick();
+  _countTimer = setInterval(tick, 1000);
+
+  // 定時重新載入
+  _autoTimer = setInterval(function(){
+    _nextRefresh = Date.now() + ms;
+    reloadSheet();
+  }, ms);
+}
+
+// 載入成功後自動啟動計時器
+var _origLoadSheet = loadSheet;
+loadSheet = async function(){
+  await _origLoadSheet.apply(this, arguments);
+  if(window._gsUrl) setAutoRefresh();
+};
+
 /* ── Init ── */
 buildLegend();
 renderAll();
+// 一開啟自動從 Google Sheet 載入
+loadSheet();
 </script>
 </body>
 </html>
