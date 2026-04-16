@@ -369,13 +369,11 @@ body {
 <!-- GOOGLE SHEET PANEL -->
 <div id="gs-panel" style="background:#fff;border-bottom:1px solid var(--border);padding:0 16px;max-height:0;overflow:hidden;transition:max-height .25s ease,padding .25s;flex-shrink:0">
   <div style="padding:12px 0 14px">
-    <div style="font-size:11px;font-weight:700;color:var(--sub);margin-bottom:6px">貼上 Google Sheet 公開連結</div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <input id="gs-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;outline:none;background:#F5F3EE;color:var(--text);min-width:0">
-      <button onclick="loadSheet()" style="padding:9px 16px;background:#1A1A1A;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0">載入</button>
-      <button onclick="reloadSheet()" title="重新載入最新資料" style="padding:9px 12px;background:#34A853;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">🔄</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:900">Google Sheet 同步</span>
+      <button onclick="reloadSheet()" style="padding:6px 14px;background:#34A853;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔄 立即更新</button>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <span style="font-size:11px;font-weight:700;color:var(--sub);white-space:nowrap">自動更新</span>
       <select id="gs-interval" onchange="setAutoRefresh()" style="padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:#F5F3EE;color:var(--text);outline:none;-webkit-appearance:none">
         <option value="0">關閉</option>
@@ -387,14 +385,7 @@ body {
       </select>
       <span id="gs-countdown" style="font-size:11px;color:#34A853;font-weight:700;display:none"></span>
     </div>
-    <div id="gs-status" style="font-size:11px;margin-top:7px;min-height:16px;color:var(--sub)"></div>
-    <div style="font-size:10px;color:#aaa;margin-top:8px;line-height:1.6">
-      📌 試算表欄位順序（第1列為標題）：<br>
-      <strong style="color:#555">促案名稱 ｜ 通路 ｜ 品項 ｜ 開始日期 ｜ 結束日期 ｜ 備註</strong><br>
-      通路：CVS / 全聯 / 連鎖超市 / 量販 / 傳統 / 教育訓練<br>
-      品項：啤酒 / 烈酒 / 菸 / 泡麵 / 飲料 / 生技 / 其他<br>
-      日期格式：YYYY-MM-DD
-    </div>
+    <div id="gs-status" style="font-size:11px;min-height:16px;color:var(--sub)"></div>
   </div>
 </div>
 
@@ -553,12 +544,8 @@ var CH_ORDER   = ['CVS','全聯','連鎖超市','量販','傳統','教育訓練'
 var visibleCh  = {};
 CH_ORDER.forEach(function(k){ visibleCh[k] = true; });
 
-var promos = [
-  { id:1, name:'春節特賣', ch:'CVS', item:'啤酒', start:'2026-04-17', end:'2026-04-30', note:'啤酒' },
-  { id:2, name:'秋節特賣', ch:'CVS', item:'烈酒', start:'2026-04-17', end:'2026-05-30', note:'啤酒' },
-  { id:3, name:'冬節特賣', ch:'CVS', item:'生技', start:'2026-04-30', end:'2026-06-01', note:'生技' },
-];
-var nextId = 13;
+var promos = []; // 等 API 載入
+var nextId = 1;
 var curView = 'gantt';
 var curDate = new Date();
 var editingId = null;
@@ -1096,7 +1083,7 @@ function toggleGsPanel(){
   p.style.padding   = gsPanelOpen ? '0 16px' : '0 16px';
 }
 
-var GAS_API = 'https://script.google.com/macros/s/AKfycbzcpdddacKQLLOMbuYwAlFhjtAiQ_EeZmbgAUEbTAsir96tnhqq-gp1BFnU8hZau2g/exec';
+var GAS_API = 'https://script.google.com/macros/s/AKfycbzdDU6EO4Y6XAzW8hrsxi7EGrdzgyEimasrW6h9z-ocxBuT_PQeBI7POvMppP9-wXI/exec';
 
 function sheetUrlToCsvUrl(url){
   var m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -1263,8 +1250,34 @@ loadSheet = async function(){
 /* ── Init ── */
 buildLegend();
 renderAll();
-// 一開啟自動從 Google Sheet 載入
-loadSheet();
+// 自動從 Google Sheet API 載入
+(async function(){
+  try {
+    setGsStatus('⏳ 自動載入中...', '#888');
+    var res = await fetch(GAS_API + '?t=' + Date.now());
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    var data = await res.json();
+    if(!Array.isArray(data)||!data.length) throw new Error('no data');
+    var imported=[], skipped=0;
+    data.forEach(function(r){
+      var name=(r.name||'').trim(), ch=(r.ch||'').trim(), item=(r.item||'').trim();
+      var start=(r.start||'').trim(), end=(r.end||'').trim(), note=(r.note||'').trim();
+      if(!name||!start||!end){skipped++;return;}
+      if(!CH_META[ch])     ch='CVS';
+      if(!ITEM_META[item]) item='其他';
+      imported.push({id:nextId++,name:name,ch:ch,item:item,start:start,end:end,note:note});
+    });
+    if(!imported.length) throw new Error('no valid rows');
+    promos=imported;
+    window._gsUrl=GAS_API;
+    document.getElementById('gs-dot').style.display='block';
+    setGsStatus('✅ 已同步 '+imported.length+' 筆資料'+(skipped?' ('+skipped+' 筆略過)':''), '#34A853');
+    buildLegend(); renderAll();
+  } catch(e){
+    setGsStatus('⚠️ 自動載入失敗，顯示預設資料', '#E53935');
+    console.error(e);
+  }
+})();
 </script>
 </body>
 </html>
