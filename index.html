@@ -486,6 +486,14 @@ body {
       <option value="其他">其他</option>
     </select>
   </div>
+  <div class="form-row">
+    <label>活動品項</label>
+    <input type="text" id="f-products" placeholder="例：台灣啤酒330ml、金牌啤酒">
+  </div>
+  <div class="form-row">
+    <label>折扣內容</label>
+    <input type="text" id="f-discount" placeholder="例：買2送1、8折優惠、第2件5折">
+  </div>
   <div class="form-row half">
     <div>
       <label>開始日期</label>
@@ -1012,6 +1020,8 @@ function openModal(id){
     document.getElementById('f-start').value=p.start;
     document.getElementById('f-end').value=p.end;
     document.getElementById('f-note').value=p.note;
+    document.getElementById('f-products').value=p.products||'';
+    document.getElementById('f-discount').value=p.discount||'';
   } else {
     document.getElementById('f-name').value='';
     document.getElementById('f-ch').value='CVS';
@@ -1019,6 +1029,8 @@ function openModal(id){
     document.getElementById('f-start').value=toDateStr(new Date());
     document.getElementById('f-end').value=toDateStr(new Date());
     document.getElementById('f-note').value='';
+    document.getElementById('f-products').value='';
+    document.getElementById('f-discount').value='';
   }
   document.getElementById('overlay').classList.add('open');
 }
@@ -1066,7 +1078,23 @@ function showDetail(id){
     +'<span style="background:#F0F0F0;color:#555;border-radius:99px;padding:4px 12px;font-size:12px;font-weight:700">'+dur+' 天</span>';
   document.getElementById('detail-name').textContent=p.name;
   document.getElementById('detail-dates').innerHTML='<span>📅</span> '+p.start+' ～ '+p.end;
-  document.getElementById('detail-note').textContent=p.note||'（無備註）';
+
+  // 活動品項 + 折扣 + 備註
+  var extra='';
+  if(p.products) extra+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">🏷</span>'
+    +'<div><div style="font-size:11px;font-weight:700;color:#888;margin-bottom:2px">活動品項</div>'
+    +'<div style="font-size:14px;font-weight:700;color:#1A1A1A">'+esc(p.products)+'</div></div></div>';
+  if(p.discount) extra+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">🎁</span>'
+    +'<div><div style="font-size:11px;font-weight:700;color:#888;margin-bottom:2px">折扣內容</div>'
+    +'<div style="font-size:14px;font-weight:700;color:#E53935">'+esc(p.discount)+'</div></div></div>';
+  if(p.note) extra+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">📝</span>'
+    +'<div><div style="font-size:11px;font-weight:700;color:#888;margin-bottom:2px">備註</div>'
+    +'<div style="font-size:14px;color:#1A1A1A;line-height:1.6">'+esc(p.note)+'</div></div></div>';
+  if(!extra) extra='<div style="color:#aaa;font-size:13px">（無活動內容）</div>';
+  document.getElementById('detail-note').innerHTML=extra;
   document.getElementById('detail-overlay').classList.add('open');
 }
 function closeDetail(){
@@ -1086,7 +1114,7 @@ function toggleGsPanel(){
   p.style.padding   = gsPanelOpen ? '0 16px' : '0 16px';
 }
 
-var GAS_API = 'https://script.google.com/macros/s/AKfycbzdDU6EO4Y6XAzW8hrsxi7EGrdzgyEimasrW6h9z-ocxBuT_PQeBI7POvMppP9-wXI/exec';
+var GAS_API = 'https://script.google.com/macros/s/AKfycbwH5AEv17X2PTGv9nyL4Cj2G0IFmIsLCoHuegHtgB0EItICRV8qFBcPMmuWWDHSBCE/exec';
 
 function sheetUrlToCsvUrl(url){
   var m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -1265,10 +1293,12 @@ renderAll();
     data.forEach(function(r){
       var name=(r.name||'').trim(), ch=(r.ch||'').trim(), item=(r.item||'').trim();
       var start=(r.start||'').trim(), end=(r.end||'').trim(), note=(r.note||'').trim();
+      var products=(r.products||'').trim();
+      var discount=(r.discount||'').trim();
       if(!name||!start||!end){skipped++;return;}
       if(!CH_META[ch])     ch='CVS';
       if(!ITEM_META[item]) item='其他';
-      imported.push({id:nextId++,name:name,ch:ch,item:item,start:start,end:end,note:note});
+      imported.push({id:nextId++,name:name,ch:ch,item:item,start:start,end:end,note:note,products:products,discount:discount});
     });
     if(!imported.length) throw new Error('no valid rows');
     promos=imported;
